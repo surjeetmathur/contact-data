@@ -1,74 +1,67 @@
-require("dotenv").config();
-const express = require("express");
-const { google } = require("googleapis");
-const bodyParser = require("body-parser");
-const cors = require("cors");
-
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const { google } = require('googleapis');
+require('dotenv').config();
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 
+// Middlewares
 app.use(cors());
 app.use(bodyParser.json());
 
-// Fix private key line breaks for Google JWT auth
-const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n");
+// Auth
+const auth = new google.auth.GoogleAuth({
+    keyFile: 'google-credentials.json',
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
 
-const auth = new google.auth.JWT(
-    process.env.GOOGLE_CLIENT_EMAIL,
-    null,
-    privateKey, ["https://www.googleapis.com/auth/spreadsheets"]
-);
-
-const sheets = google.sheets({ version: "v4", auth });
-
-const spreadsheetId = process.env.SPREADSHEET_ID;
-const sheetName = "Sheet1";
-
-app.post("/api/contact", async(req, res) => {
+// Route
+app.post('/api/contact', async(req, res) => {
     const {
-        name,
+        fullName,
         email,
         phone,
-        interests,
-
         location,
         businessType,
+        interests,
         contactMethod,
-
+        message
     } = req.body;
 
     try {
-        const values = [
-            [
-                name,
-                email,
-                phone,
-                interests,
-
-                location,
-                businessType,
-                contactMethod,
-
-                message,
-
-                new Date().toLocaleString(),
-            ],
-        ];
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
 
         await sheets.spreadsheets.values.append({
-            spreadsheetId,
-            range: `${sheetName}!A1`,
-            valueInputOption: "USER_ENTERED",
-            resource: { values },
+            spreadsheetId: '1bQmSdkMRbA2BMUUkcPyNpNPqnoWkvUUCHJOLw9MWPXA',
+            range: 'Sheet1!A1',
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+                values: [
+                    [
+
+                        fullName,
+                        email,
+                        phone,
+                        location,
+                        businessType,
+                        interests.join(', '),
+                        contactMethod,
+                        message,
+                        new Date().toLocaleString()
+                    ]
+                ]
+            }
         });
 
-        res.status(200).json({ success: true, message: "Data added to sheet." });
-    } catch (error) {
-        console.error("Error appending data to Google Sheet:", error);
-        res.status(500).json({ error: "Failed to store data in Google Sheet." });
+        res.status(200).json({ message: "Form submitted successfully!" });
+    } catch (err) {
+        console.error("Google Sheets Error:", err);
+        res.status(500).json({ error: "Something went wrong." });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server started on port ${PORT}`);
 });
